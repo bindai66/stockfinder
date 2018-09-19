@@ -37,7 +37,10 @@ def init_database(forcelyClear=False):
 	if forcelyClear:
 		dbpath = _context.get('db_path', None)
 		if dbpath:
-			os.unlink(dbpath)
+			try:
+				os.unlink(dbpath)
+			except:
+				pass                
 
 	res_path = os.path.join('res', 'init.sql')
 	with open(res_path, 'r', encoding='utf-8') as f:
