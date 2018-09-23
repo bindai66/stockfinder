@@ -4,6 +4,7 @@ import sqlite3
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.finance as matfin
 from matplotlib.ticker import FuncFormatter
 
 from . import core
@@ -35,6 +36,7 @@ def draw_basic_chart(symbol, start_date=None):
 		                    , D.K, D.D                     -- [12, 13]
 		                    , E.WIL_R                      -- [14]
 		                    , F.RSI                        -- [15]
+							, A.OPEN, A.HIGH, A.LOW        -- [16-18]
 		                 FROM OHLCV A
                                  LEFT OUTER JOIN IND_MA B ON (A.SYMBOL = B.SYMBOL AND A.DATE = B.DATE)
                                  LEFT OUTER JOIN IND_MACD C ON (A.SYMBOL = C.SYMBOL AND A.DATE = C.DATE)
@@ -55,13 +57,15 @@ def draw_basic_chart(symbol, start_date=None):
 		cur.close()
 		conn.close()
 
-	fig, ax = plt.subplots(nrows=6)
+	_, ax = plt.subplots(nrows=6, gridspec_kw = { 'height_ratios': [2, 1, 1, 1, 1, 1]})
 	ax[0].set_title('Stock Finder [{}]'.format(symbol))
 	ax[-1].set_xlabel('Date')
 	date_ticks = vals[0][::-int(len(vals[0]) / 12)]
 
 	# Prices
-	ax[0].plot(vals[0], vals[1], '.-', label='Close')
+	matfin.candlestick2_ohlc(ax[0], vals[16], vals[17], vals[18], vals[1], 
+			width=0.6, colorup='r', colordown='b')
+	ax[0].plot(vals[0], vals[1], '--', label='Close')
 	ax[0].plot(vals[0], vals[2], ':', label='MA-5')
 	ax[0].plot(vals[0], vals[3], ':', label='MA-10')
 	ax[0].plot(vals[0], vals[4], ':', label='MA-20')
