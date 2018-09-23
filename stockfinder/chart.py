@@ -12,13 +12,15 @@ def draw_basic_chart(symbol, start_date=None):
 	def number_formatter(y, pos):
 		return '{:,.0f}'.format(y)
 
-	def default_axis_set(ax, x_ticks, label):
+	def default_axis_set(ax, x_ticks, label, **kargs):
 		ax.set_xticks(x_ticks)
 		ax.yaxis.set_major_formatter(FuncFormatter(number_formatter))
 		ax.set_axisbelow(True)
 		ax.xaxis.grid(True, color='gray', linestyle='dashed', linewidth=0.5)
 		ax.yaxis.grid(True, color='gray', linestyle='dashed', linewidth=0.5)
 		ax.set_ylabel(label)
+		if 'ylim' in kargs:
+			ax.set_ylim(kargs['ylim'])
 		ax.legend()
 
 	if not start_date:
@@ -34,7 +36,7 @@ def draw_basic_chart(symbol, start_date=None):
 		                    , E.WIL_R                      -- [14]
 		                    , F.RSI                        -- [15]
 		                 FROM OHLCV A
-                                 LEFT OUTER JOIN IND_EMA B ON (A.SYMBOL = B.SYMBOL AND A.DATE = B.DATE)
+                                 LEFT OUTER JOIN IND_MA B ON (A.SYMBOL = B.SYMBOL AND A.DATE = B.DATE)
                                  LEFT OUTER JOIN IND_MACD C ON (A.SYMBOL = C.SYMBOL AND A.DATE = C.DATE)
                                  LEFT OUTER JOIN IND_STOCHASTIC D ON (A.SYMBOL = D.SYMBOL AND A.DATE = D.DATE)
                                  LEFT OUTER JOIN IND_WIL_R E ON (A.SYMBOL = E.SYMBOL AND A.DATE = E.DATE)
@@ -83,18 +85,18 @@ def draw_basic_chart(symbol, start_date=None):
 	ax[3].plot(vals[0], vals[13], '-', label='Fast%D')
 	ax[3].plot(vals[0], [20] * len(vals[0]), 'r:', label='')
 	ax[3].plot(vals[0], [80] * len(vals[0]), 'r:', label='')
-	default_axis_set(ax[3], date_ticks, 'STOCHASTIC')
+	default_axis_set(ax[3], date_ticks, 'STOCHASTIC', ylim=[0, 100])
 
 	# WILLIAM %R
 	ax[4].plot(vals[0], vals[14], '-', label='William%R')
 	ax[4].plot(vals[0], [-20] * len(vals[0]), 'r:', label='')
 	ax[4].plot(vals[0], [-80] * len(vals[0]), 'r:', label='')
-	default_axis_set(ax[4], date_ticks, 'WILLIAM %R')
+	default_axis_set(ax[4], date_ticks, 'WILLIAM %R', ylim=[-100, 0])
 
 	# RSI
 	ax[5].plot(vals[0], vals[15], '-', label='RSI')
 	ax[5].plot(vals[0], [30] * len(vals[0]), 'r:', label='')
 	ax[5].plot(vals[0], [70] * len(vals[0]), 'r:', label='')
-	default_axis_set(ax[5], date_ticks, 'RSI')
+	default_axis_set(ax[5], date_ticks, 'RSI', ylim=[0, 100])
 
 
