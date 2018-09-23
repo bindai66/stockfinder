@@ -30,13 +30,12 @@ def draw_basic_chart(symbol, start_date=None):
 	with core.DBConn() as conn:
 		cur = conn.cursor()
 		cur.execute('''SELECT A.DATE
-		                    , A.CLOSE, B.P5, B.P10, B.P20  -- [1, 4]
-		                    , A.VOLUME, B.V5, B.V10, B.V20 -- [5, 8]
-		                    , C.MACD, C.SIGNAL, C.HIST     -- [9, 11]
-		                    , D.K, D.D                     -- [12, 13]
-		                    , E.WIL_R                      -- [14]
-		                    , F.RSI                        -- [15]
-							, A.OPEN, A.HIGH, A.LOW        -- [16-18]
+		                    , A.OPEN, A.HIGH, A.LOW, A.CLOSE, B.P5, B.P10, B.P20  -- [1, 7]
+		                    , A.VOLUME, B.V5, B.V10, B.V20 -- [8, 11]
+		                    , C.MACD, C.SIGNAL, C.HIST     -- [12, 14]
+		                    , D.K, D.D                     -- [15, 16]
+		                    , E.WIL_R                      -- [17]
+		                    , F.RSI                        -- [18]
 		                 FROM OHLCV A
                                  LEFT OUTER JOIN IND_MA B ON (A.SYMBOL = B.SYMBOL AND A.DATE = B.DATE)
                                  LEFT OUTER JOIN IND_MACD C ON (A.SYMBOL = C.SYMBOL AND A.DATE = C.DATE)
@@ -63,42 +62,42 @@ def draw_basic_chart(symbol, start_date=None):
 	date_ticks = vals[0][::-int(len(vals[0]) / 12)]
 
 	# Prices
-	matfin.candlestick2_ohlc(ax[0], vals[16], vals[17], vals[18], vals[1], 
+	matfin.candlestick2_ohlc(ax[0], vals[1], vals[2], vals[3], vals[4], 
 			width=0.6, colorup='r', colordown='b')
 	ax[0].plot(vals[0], vals[1], '--', label='Close')
-	ax[0].plot(vals[0], vals[2], ':', label='MA-5')
-	ax[0].plot(vals[0], vals[3], ':', label='MA-10')
-	ax[0].plot(vals[0], vals[4], ':', label='MA-20')
+	ax[0].plot(vals[0], vals[5], ':', label='MA-5')
+	ax[0].plot(vals[0], vals[6], ':', label='MA-10')
+	ax[0].plot(vals[0], vals[7], ':', label='MA-20')
 	default_axis_set(ax[0], date_ticks, 'Prices')
 
 	# Volumes
-	ax[1].bar(vals[0], vals[5], label='Volume')
-	ax[1].plot(vals[0], vals[6], ':', label='MA-5')
-	ax[1].plot(vals[0], vals[7], ':', label='MA-10')
-	ax[1].plot(vals[0], vals[8], ':', label='MA-20')
+	ax[1].bar(vals[0], vals[8], label='Volume')
+	ax[1].plot(vals[0], vals[9], ':', label='MA-5')
+	ax[1].plot(vals[0], vals[10], ':', label='MA-10')
+	ax[1].plot(vals[0], vals[11], ':', label='MA-20')
 	default_axis_set(ax[1], date_ticks, 'Volumes')
 
 	# MACD
-	ax[2].plot(vals[0], vals[9], ':', label='MACD')
-	ax[2].plot(vals[0], vals[10], ':', label='SIGNAL')
-	ax[2].bar(vals[0], vals[11], label='HIST')
+	ax[2].plot(vals[0], vals[12], ':', label='MACD')
+	ax[2].plot(vals[0], vals[13], ':', label='SIGNAL')
+	ax[2].bar(vals[0], vals[14], label='HIST')
 	default_axis_set(ax[2], date_ticks, 'MACD')
 
 	# STOCHASTIC
-	ax[3].plot(vals[0], vals[12], '-', label='Fast%K')
-	ax[3].plot(vals[0], vals[13], '-', label='Fast%D')
+	ax[3].plot(vals[0], vals[15], '-', label='Fast%K')
+	ax[3].plot(vals[0], vals[16], '-', label='Fast%D')
 	ax[3].plot(vals[0], [20] * len(vals[0]), 'r:', label='')
 	ax[3].plot(vals[0], [80] * len(vals[0]), 'r:', label='')
 	default_axis_set(ax[3], date_ticks, 'STOCHASTIC', ylim=[0, 100])
 
 	# WILLIAM %R
-	ax[4].plot(vals[0], vals[14], '-', label='William%R')
+	ax[4].plot(vals[0], vals[17], '-', label='William%R')
 	ax[4].plot(vals[0], [-20] * len(vals[0]), 'r:', label='')
 	ax[4].plot(vals[0], [-80] * len(vals[0]), 'r:', label='')
 	default_axis_set(ax[4], date_ticks, 'WILLIAM %R', ylim=[-100, 0])
 
 	# RSI
-	ax[5].plot(vals[0], vals[15], '-', label='RSI')
+	ax[5].plot(vals[0], vals[18], '-', label='RSI')
 	ax[5].plot(vals[0], [30] * len(vals[0]), 'r:', label='')
 	ax[5].plot(vals[0], [70] * len(vals[0]), 'r:', label='')
 	default_axis_set(ax[5], date_ticks, 'RSI', ylim=[0, 100])

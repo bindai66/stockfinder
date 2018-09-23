@@ -112,12 +112,14 @@ def fill_krx_rank(date):
 				# 거래 없는 것들 보정 (거래정지)
 				for k in ['open', 'high', 'low']:
 					if df[k][i] == 0:
-						df[k][i] = df['close'][i]
+						df.loc[i, k] = df['close'][i]
 
 				# 삼성전자 감자 보정
 				if date <= '20180503' and df['symbol'][i] == '005930':
 					for k in ['open', 'high', 'low', 'close']:
-						df[k][i] = round(df[k][i] / 50)
+						df.loc[i, k] = round(df[k][i] / 50)
+					
+					df.loc[i, 'vol'] = df['vol'][i] * 50
 
 				d = [df['symbol'][i], date, int(df['open'][i]), int(df['high'][i]),
 					int(df['low'][i]), int(df['close'][i]), int(df['vol'][i]),
@@ -439,8 +441,9 @@ def fill_indices():
 		symbols = list(map(lambda x: x[0], cur.fetchall()))
 
 		elapsed = 0
-		total = 0
-		count = 0
+		processed = 0
+		total = len(symbols)
+		interval = round(total / 10)
 		for symbol in symbols:
 			begin = time.time()
 			df = pd.read_sql_query('''SELECT SYMBOL, DATE, OPEN, HIGH, LOW, CLOSE, VOLUME
@@ -456,5 +459,11 @@ def fill_indices():
 			fill_indices_williams_r(df, conn)
 
 			end = time.time()
-			elapsed = end - begin
-			print('GENERATE INDICES. SYMBOL: {}, ELAPSED: {:.3f}'.format(symbol, elapsed))
+			elapsed += end - begin
+			processed += 1
+			if processed % interval == 0:
+				print('Processed [{} / {}] Avg[{:.2f}] Total[{:.0f}]'.format(
+						processed, total, elapsed / processed, elapsed))
+			
+	print('Complete generating indices. Count[{}] Avg[{:.3f}] Total[{:.3f}]'.format(
+			total, elapsed / total, elapsed))
