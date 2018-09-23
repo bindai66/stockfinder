@@ -13,24 +13,25 @@ from . import config
 from . import utils
 
 _context = config.context
-_conn = None
 
 MARKET_KOSPI = '1'
 MARKET_KOSDAQ = '2'
 
 # ==============================================================================
-def get_connection(reload=False):
-	global _conn
+class DBConn:
 
-	if reload:
-		if _conn:
-			_conn.close()
-		_conn = None
-
-	if _conn == None:
+	def __init__(self):
 		dbpath = _context.get('db_path', ':memory:')
-		_conn = sqlite3.connect(dbpath)
-	return _conn
+		self._conn = sqlite3.connect(dbpath)
+
+	def __enter__(self):
+		return self._conn
+
+	def __exit__(self, exec_type, exec_value, traceback):
+		self._conn.close()
+
+	def get_connection(self):
+		return self._conn
 
 # ==============================================================================
 def init_database(forcelyClear=False):
@@ -40,16 +41,16 @@ def init_database(forcelyClear=False):
 			try:
 				os.unlink(dbpath)
 			except:
-				pass                
+				pass
 
 	res_path = os.path.join('res', 'init.sql')
 	with open(res_path, 'r', encoding='utf-8') as f:
 		sql_text = f.read()
 
-	conn = get_connection(True)
-	cur = conn.cursor()
-	cur.executescript(sql_text)
-	cur.close()
+	with DBConn() as conn:
+		cur = conn.cursor()
+		cur.executescript(sql_text)
+		cur.close()
 
 # ==============================================================================
 def get_krx_file(filepath, layout):
@@ -96,32 +97,41 @@ def get_krx_rank(date):
 # ==============================================================================
 def fill_krx_rank(date):
 	begin = time.time()
+	with DBConn() as conn:
 
-	conn = get_connection()
-	cur = conn.cursor()
-	cur.execute('''SELECT SYMBOL
-	                 FROM BASE_ITEM''')
-	symbols = list(map(lambda x: x[0], cur.fetchall()))
-	cur.close()
+		cur = conn.cursor()
+		cur.execute('''SELECT SYMBOL
+						 FROM BASE_ITEM''')
+		symbols = list(map(lambda x: x[0], cur.fetchall()))
+		cur.close()
 
-	df = get_krx_rank(date)
-	vals = []
-	for i in range(len(df)):
-		if df['symbol'][i] in symbols:
-			d = [df['symbol'][i], date, int(df['open'][i]), int(df['high'][i]),
-				int(df['low'][i]), int(df['close'][i]), int(df['vol'][i]),
-				float(df['foreign'][i])]
-			vals.append(d)
+		df = get_krx_rank(date)
+		vals = []
+		for i in range(len(df)):
+			if df['symbol'][i] in symbols:
+				# 거래 없는 것들 보정 (거래정지)
+				for k in ['open', 'high', 'low']:
+					if df[k][i] == 0:
+						df[k][i] = df['close'][i]
 
-	conn = get_connection()
-	cur = conn.cursor()
-	cur.executemany('''INSERT INTO OHLCV VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', vals)
-	cur.close()
-	conn.commit()
+				# 삼성전자 감자 보정
+				if date <= '20180503' and df['symbol'][i] == '005930':
+					for k in ['open', 'high', 'low', 'close']:
+						df[k][i] = round(df[k][i] / 50)
+
+				d = [df['symbol'][i], date, int(df['open'][i]), int(df['high'][i]),
+					int(df['low'][i]), int(df['close'][i]), int(df['vol'][i]),
+					float(df['foreign'][i])]
+				vals.append(d)
+
+		cur = conn.cursor()
+		cur.executemany('''INSERT INTO OHLCV VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', vals)
+		cur.close()
+		conn.commit()
 
 	end = time.time()
 	elapsed = end - begin
-	logging.debug('FILL KRX RANK. DATE: {}, ELAPSED: {:.3f}'.format(date, elapsed))
+	print('FILL KRX RANK. DATE: {}, ELAPSED: {:.3f}'.format(date, elapsed))
 
 # ==============================================================================
 def get_krx_base(market):
@@ -153,15 +163,15 @@ def fill_krx_base(market):
 			df['bizname'][i], int(df['lst_qty'][i]), int(df['capital'][i])]
 		vals.append(d)
 
-	conn = get_connection()
-	cur = conn.cursor()
-	cur.executemany('''INSERT INTO BASE_ITEM VALUES (?, ?, ?, ?, ?, ?, ?)''', vals)
-	cur.close()
-	conn.commit()
+	with DBConn() as conn:
+		cur = conn.cursor()
+		cur.executemany('''INSERT INTO BASE_ITEM VALUES (?, ?, ?, ?, ?, ?, ?)''', vals)
+		cur.close()
+		conn.commit()
 
 	end = time.time()
 	elapsed = end - begin
-	logging.debug('FILL KRX BASE. MARKET: {}, ELAPSED: {:.3f}'.format(market, elapsed))
+	print('FILL KRX BASE. MARKET: {}, ELAPSED: {:.3f}'.format(market, elapsed))
 
 # ==============================================================================
 def fill_calendar(year):
@@ -217,39 +227,22 @@ def fill_calendar(year):
 		dates.append((cur_date, work, prev_date, next_date, prev_bizdate,
 			next_bizdate, date_no, bizdate_no, ))
 
-	conn = get_connection()
-	cur = conn.cursor()
-	cur.executemany('''INSERT INTO CALENDAR VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-		dates)
-	cur.close()
-	conn.commit()
+	with DBConn() as conn:
+		cur = conn.cursor()
+		cur.executemany('''INSERT INTO CALENDAR VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+			dates)
+		cur.close()
+		conn.commit()
 
 	end = time.time()
 	elapsed = end - begin
-	logging.debug('FILL CALENDAR. YEAR: {}, ELAPSED: {:.3f}'.format(year, elapsed))
+	print('FILL CALENDAR. YEAR: {}, ELAPSED: {:.3f}'.format(year, elapsed))
 
 # ==============================================================================
-def adjust_df(df):
-	old = pd.options.mode.chained_assignment
-	pd.options.mode.chained_assignment = None
-	for colname in ['OPEN', 'HIGH', 'LOW']:
-		idx = df[colname] == 0
-		df[colname][idx] = df['CLOSE'][idx]
-
-	# 삼성전자 액면분할 조정
-	if len(df) > 0 and df['SYMBOL'][0] == '005930':
-		idx = df['DATE'] <= '20180503'
-		for colname in ['OPEN', 'HIGH', 'LOW', 'CLOSE']:
-			df[colname][idx] = round(df[colname][idx] / 50)
-
-	pd.options.mode.chained_assignment = old
-
-# ==============================================================================
-def fill_indices_ma(df):
+def fill_indices_ma(df, conn):
 	if len(df) <= 0:
 		return
 
-	conn = get_connection()
 	cur = conn.cursor()
 	cur.execute('SELECT MAX(DATE) FROM IND_MA WHERE SYMBOL = ?', (df['SYMBOL'][0], ))
 	lastDate = cur.fetchone()[0]
@@ -258,69 +251,211 @@ def fill_indices_ma(df):
 	if not lastDate:
 		lastDate = '19000101'
 
+	p5 = df['CLOSE'].rolling(window=5).mean()
+	p10 = df['CLOSE'].rolling(window=10).mean()
+	p20 = df['CLOSE'].rolling(window=20).mean()
+	p60 = df['CLOSE'].rolling(window=60).mean()
+	v5 = df['VOLUME'].rolling(window=5).mean()
+	v10 = df['VOLUME'].rolling(window=10).mean()
+	v20 = df['VOLUME'].rolling(window=20).mean()
+	v60 = df['VOLUME'].rolling(window=60).mean()
+
 	vals = []
 	for i in range(len(df)):
 		if df['DATE'][i] <= lastDate:
-			break
+			continue
 
-		ma = [df['SYMBOL'][i], df['DATE'][i]]
-		ma_p = []
-		ma_v = []
-		for period in [5, 10, 20, 60]:
-			begin = i
-			end = min(i + period, len(df))
-			ma_p.append(round(sum(df['CLOSE'][begin:end]) / len(df['CLOSE'][begin:end])))
-			ma_v.append(round(sum(df['VOLUME'][begin:end]) / len(df['VOLUME'][begin:end])))
-		ma.extend(ma_p)
-		ma.extend(ma_v)
-		vals.append(ma)
+		vals.append([df['SYMBOL'][i], df['DATE'][i],
+			p5[i], p10[i], p20[i], p60[i], v5[i], v10[i], v20[i], v60[i]])
 
-	conn = get_connection()
 	cur = conn.cursor()
 	cur.executemany('''INSERT INTO IND_MA VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', vals)
 	cur.close()
 	conn.commit()
 
 # ==============================================================================
-def fill_indices_macd(df):
-	pass
+def fill_indices_ema(df, conn):
+	if len(df) <= 0:
+		return
+
+	cur = conn.cursor()
+	cur.execute('SELECT MAX(DATE) FROM IND_EMA WHERE SYMBOL = ?', (df['SYMBOL'][0], ))
+	lastDate = cur.fetchone()[0]
+	cur.close()
+
+	if not lastDate:
+		lastDate = '19000101'
+
+	p5 = df['CLOSE'].ewm(span=5).mean()
+	p10 = df['CLOSE'].ewm(span=10).mean()
+	p20 = df['CLOSE'].ewm(span=20).mean()
+	p60 = df['CLOSE'].ewm(span=60).mean()
+	v5 = df['VOLUME'].ewm(span=5).mean()
+	v10 = df['VOLUME'].ewm(span=10).mean()
+	v20 = df['VOLUME'].ewm(span=20).mean()
+	v60 = df['VOLUME'].ewm(span=60).mean()
+
+	vals = []
+	for i in range(len(df)):
+		if df['DATE'][i] <= lastDate:
+			continue
+
+		vals.append([df['SYMBOL'][i], df['DATE'][i],
+			p5[i], p10[i], p20[i], p60[i], v5[i], v10[i], v20[i], v60[i]])
+
+	cur = conn.cursor()
+	cur.executemany('''INSERT INTO IND_EMA VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', vals)
+	cur.close()
+	conn.commit()
 
 # ==============================================================================
-def fill_indices_rsi(df):
-	pass
+def fill_indices_macd(df, conn):
+	if len(df) <= 0:
+		return
+
+	cur = conn.cursor()
+	cur.execute('SELECT MAX(DATE) FROM IND_MACD WHERE SYMBOL = ?', (df['SYMBOL'][0], ))
+	lastDate = cur.fetchone()[0]
+	cur.close()
+
+	if not lastDate:
+		lastDate = '19000101'
+
+	ma_12 = df['CLOSE'].ewm(span=12).mean()
+	ma_26 = df['CLOSE'].ewm(span=26).mean()
+	macd = ma_12 - ma_26
+	signal = macd.ewm(span=9).mean()
+	hist = macd - signal
+	vals = []
+	for i in range(len(df)):
+		if df['DATE'][i] <= lastDate:
+			continue
+
+		vals.append([df['SYMBOL'][i], df['DATE'][i],
+			ma_12[i], ma_26[i], macd[i], signal[i], hist[i]])
+
+	cur = conn.cursor()
+	cur.executemany('''INSERT INTO IND_MACD VALUES (?, ?, ?, ?, ?, ?, ?)''', vals)
+	cur.close()
+	conn.commit()
 
 # ==============================================================================
-def fill_indices_stochastic(df):
-	pass
+def fill_indices_rsi(df, conn):
+	if len(df) <= 0:
+		return
+
+	cur = conn.cursor()
+	cur.execute('SELECT MAX(DATE) FROM IND_RSI WHERE SYMBOL = ?', (df['SYMBOL'][0], ))
+	lastDate = cur.fetchone()[0]
+	cur.close()
+
+	if not lastDate:
+		lastDate = '19000101'
+
+	up = np.where(df['CLOSE'].diff(1) > 0, df['CLOSE'].diff(1), 0)
+	dn = np.where(df['CLOSE'].diff(1) < 0, df['CLOSE'].diff(1) * -1, 0)
+
+	avg_up = pd.Series(up).rolling(7).mean()
+	avg_dn = pd.Series(dn).rolling(7).mean()
+	rs = avg_up / avg_dn
+	rsi = rs / (1. + rs) * 100
+
+	vals = []
+	for i in range(len(df)):
+		if df['DATE'][i] <= lastDate:
+			continue
+
+		vals.append([df['SYMBOL'][i], df['DATE'][i], rsi[i]])
+
+	cur = conn.cursor()
+	cur.executemany('''INSERT INTO IND_RSI VALUES (?, ?, ?)''', vals)
+	cur.close()
+	conn.commit()
 
 # ==============================================================================
-def fill_indices_williams_r(df):
-	pass
+def fill_indices_stochastic(df, conn):
+	if len(df) <= 0:
+		return
+
+	cur = conn.cursor()
+	cur.execute('SELECT MAX(DATE) FROM IND_STOCHASTIC WHERE SYMBOL = ?', (df['SYMBOL'][0], ))
+	lastDate = cur.fetchone()[0]
+	cur.close()
+
+	if not lastDate:
+		lastDate = '19000101'
+
+	high = df['HIGH'].rolling(5).max()
+	low = df['LOW'].rolling(5).min()
+	k = (df['CLOSE'] - low) / (high - low) * 100
+	d = k.rolling(3).mean()
+
+	vals = []
+	for i in range(len(df)):
+		if df['DATE'][i] <= lastDate:
+			continue
+
+		vals.append([df['SYMBOL'][i], df['DATE'][i], k[i], d[i]])
+
+	cur = conn.cursor()
+	cur.executemany('''INSERT INTO IND_STOCHASTIC VALUES (?, ?, ?, ?)''', vals)
+	cur.close()
+	conn.commit()
+
+# ==============================================================================
+def fill_indices_williams_r(df, conn):
+	if len(df) <= 0:
+		return
+
+	cur = conn.cursor()
+	cur.execute('SELECT MAX(DATE) FROM IND_WIL_R WHERE SYMBOL = ?', (df['SYMBOL'][0], ))
+	lastDate = cur.fetchone()[0]
+	cur.close()
+
+	if not lastDate:
+		lastDate = '19000101'
+
+	high = df['HIGH'].rolling(14).max()
+	low = df['LOW'].rolling(14).min()
+	wil_r = (high - df['CLOSE']) / (high - low) * -100
+
+	vals = []
+	for i in range(len(df)):
+		if df['DATE'][i] <= lastDate:
+			continue
+
+		vals.append([df['SYMBOL'][i], df['DATE'][i], wil_r[i]])
+
+	cur = conn.cursor()
+	cur.executemany('''INSERT INTO IND_WIL_R VALUES (?, ?, ?)''', vals)
+	cur.close()
+	conn.commit()
 
 # ==============================================================================
 def fill_indices():
-	conn = get_connection()
-	cur = conn.cursor()
-	cur.execute('SELECT SYMBOL FROM BASE_ITEM')
-	symbols = list(map(lambda x: x[0], cur.fetchall()))
+	with DBConn() as conn:
+		cur = conn.cursor()
+		cur.execute('''SELECT SYMBOL FROM BASE_ITEM''')
+		symbols = list(map(lambda x: x[0], cur.fetchall()))
+		symbols = ['005930']
 
-	elapsed = 0
-	total = 0
-	count = 0
-	for symbol in symbols:
-		begin = time.time()
-		df = pd.read_sql_query('''SELECT SYMBOL, DATE, OPEN, HIGH, LOW, CLOSE, VOLUME
-		                          FROM OHLCV
-		                          WHERE SYMBOL = ?
-		                          ORDER BY DATE DESC
-		                       ''', conn, params=(symbol, ))
-		adjust_df(df)
-		fill_indices_ma(df)
-		fill_indices_macd(df)
-		fill_indices_rsi(df)
-		fill_indices_stochastic(df)
-		fill_indices_williams_r(df)
+		elapsed = 0
+		total = 0
+		count = 0
+		for symbol in symbols:
+			begin = time.time()
+			df = pd.read_sql_query('''SELECT SYMBOL, DATE, OPEN, HIGH, LOW, CLOSE, VOLUME
+									  FROM OHLCV
+									  WHERE SYMBOL = ?
+									  ORDER BY DATE
+								   ''', conn, params=(symbol, ))
+			fill_indices_ma(df, conn)
+			fill_indices_ema(df, conn)
+			fill_indices_macd(df, conn)
+			fill_indices_rsi(df, conn)
+			fill_indices_stochastic(df, conn)
+			fill_indices_williams_r(df, conn)
 
-		end = time.time()
-		elapsed = end - begin
-		logging.debug('GENERATE INDICES. SYMBOL: {}, ELAPSED: {:.3f}'.format(symbol, elapsed))
+			end = time.time()
+			elapsed = end - begin
+			print('GENERATE INDICES. SYMBOL: {}, ELAPSED: {:.3f}'.format(symbol, elapsed))
