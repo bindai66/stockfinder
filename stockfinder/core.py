@@ -355,8 +355,8 @@ def fill_indices_rsi(df, conn):
 	up = np.where(df['CLOSE'].diff(1) > 0, df['CLOSE'].diff(1), 0)
 	dn = np.where(df['CLOSE'].diff(1) < 0, df['CLOSE'].diff(1) * -1, 0)
 
-	avg_up = pd.Series(up).rolling(7).mean()
-	avg_dn = pd.Series(dn).rolling(7).mean()
+	avg_up = pd.Series(up).rolling(14).mean()
+	avg_dn = pd.Series(dn).rolling(14).mean()
 	rs = avg_up / avg_dn
 	rsi = rs / (1. + rs) * 100
 
@@ -437,7 +437,6 @@ def fill_indices():
 		cur = conn.cursor()
 		cur.execute('''SELECT SYMBOL FROM BASE_ITEM''')
 		symbols = list(map(lambda x: x[0], cur.fetchall()))
-		symbols = ['005930']
 
 		elapsed = 0
 		total = 0
